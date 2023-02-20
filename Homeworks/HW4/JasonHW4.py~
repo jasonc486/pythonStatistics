@@ -1,0 +1,104 @@
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from linearmodels import IV2SLS
+from patsy import dmatrices
+from statsmodels.api import add_constant
+from linearmodels.panel import PanelOLS
+#from statsmodels.sandbox.regression.gmm import IV2SLS
+# Import all of our data, assumes the csv files are in same as execution directory
+dataSet = pd.read_stata('./part1.dta')
+print("Loaded Data")
+
+#Part 1
+#Question A and B
+Result = smf.ols(formula = "Y1 ~ X1", data=dataSet).fit(cov_type='HC3')
+print(Result.summary())
+print(Result.params)
+
+#Constants
+coefs = Result.params
+#Make Regression Line
+y_line = coefs[0] + coefs[1] * dataSet['X1'].to_numpy()
+"""
+plt.figure()
+plt.scatter(dataSet['X1'], dataSet['Y1'])
+plt.plot(dataSet['X1'], y_line, 'r')
+plt.title(f'Y1 vs. X1')
+plt.xlabel('X1')
+plt.ylabel('Y1')
+"""
+#Question C
+result2 = smf.ols(formula = 'Y2 ~ X2', data=dataSet).fit(cov_type='HC3')
+print(result2.summary())
+
+#Question D
+result3 = smf.ols(formula = 'X2 ~ Z', data=dataSet).fit(cov_type='HC3')
+print(result3.summary())
+
+#Add new column
+dataSet['Xhat'] = dataSet['Z'] * result3.params[1]
+#Regress Xhat and Y2
+result4 = smf.ols(formula = 'Y2 ~ Xhat', data=dataSet).fit(cov_type='HC3')
+print(result4.summary())
+
+#Question E
+exog = None
+dep = dataSet['Y2']
+endog = dataSet['X2']
+instr = dataSet['Z']
+dataSet = add_constant(dataSet, has_constant='add')
+resultIV = IV2SLS(dep, dataSet["const"], endog, instr).fit()
+#resultIV = IV2SLS(dataSet['Y2'], dataSet['X2'], dataSet['Z']).fit()
+print(resultIV)
+
+#Part 2
+#Question 1
+#part 2.1
+df = pd.read_csv('./part2.csv')
+
+df.drop(df[df["ap"] < 0].index, inplace = True)
+print(np.round(df["wage"].describe(), 2).T[['count','mean', 'std', 'min', 'max', '50%']])
+
+"""
+X = df['ap']
+Y = df['wage']
+model = smf.ols(formula = 'wage ~ ap', data=df).fit(cov_type='HC3')
+print(model.summary())
+X = df[['ap', 'schlid', 'year', 'studid', 'ability', 'ap_schl']]
+X = sm.add_constant(X)
+model = sm.OLS(Y, X).fit(cov_type = 'HC3')
+print(model.summary())
+"""
+X = df[['ap', 'schlid', 'year', 'studid', 'ability', 'ap_schl']]
+
+schoolEffect = pd.Categorical(df.schleff)
+df = df.set_index(["nr", "schleff"])
+df["schoolEffect"] = schoolEffect
+
+exog_vars = ["expersq", "union", "married", "year"]
+exog = sm.add_constant(df[exog_vars])
+mod = PanelOLS(df.wage, exog, entity_effects=True)
+fe_res = mod.fit()
+print(fe_res)
+
+
+
+#part 2.3 - DID regression
+"""
+data.drop(data[data["ap"] > 1].index, inplace = True)
+
+reg_exp = 'wage2 ~ year + ap2 + ap2*year'
+
+y_train, x_train = dmatrices(reg_exp, data, return_type = 'dataframe')
+
+did_model = sm.OLS(endog = y_train, exog = x_train)
+
+print(did_model.fit().summary())
+"""
+plt.show()
+
